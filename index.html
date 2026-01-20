@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>对话小说 - 预览模式</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap');
+        body { 
+            font-family: 'Noto Sans SC', sans-serif; 
+            background-color: #f1f5f9; 
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* 电脑端手机容器 */
+        .phone-container {
+            width: 375px;
+            height: 750px;
+            background: #fff;
+            border: 12px solid #1e293b;
+            border-radius: 40px;
+            position: relative;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* 移动端全屏适配 */
+        @media (max-width: 450px) {
+            .phone-container {
+                width: 100vw;
+                height: 100vh;
+                border: none;
+                border-radius: 0;
+            }
+            body { background-color: #fff; }
+        }
+
+        /* 聊天滚动区 */
+        .chat-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+        .chat-content::-webkit-scrollbar { display: none; }
+
+        /* 气泡样式 */
+        .bubble-left { background: #f1f5f9; border-radius: 4px 16px 16px 16px; color: #1e293b; }
+        .bubble-right { border-radius: 16px 4px 16px 16px; color: white; }
+        
+        .narration-style { 
+            background: transparent; 
+            color: #475569;
+            font-size: 0.85rem; 
+            text-align: center; 
+            width: 100%; 
+            margin: 15px 0; 
+            font-weight: 600;
+            line-height: 1.5;
+        }
+
+        .message-anim { animation: fadeInStep 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+        @keyframes fadeInStep { 
+            from { opacity: 0; transform: translateY(10px); } 
+            to { opacity: 1; transform: translateY(0); } 
+        }
+
+        /* 导入遮罩 */
+        #importOverlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.95);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            text-align: center;
+        }
+
+        /* 章节侧滑菜单 */
+        #drawer {
+            position: absolute;
+            left: -100%;
+            top: 0;
+            width: 80%;
+            height: 100%;
+            background: white;
+            z-index: 200;
+            box-shadow: 10px 0 30px rgba(0,0,0,0.1);
+            transition: left 0.3s ease;
+        }
+        #drawer.open { left: 0; }
+        .drawer-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 190;
+            display: none;
+        }
+        .drawer-overlay.open { display: block; }
+    </style>
+</head>
+<body>
+
+    <div class="phone-container">
+        <!-- 头部 -->
+        <header class="h-14 border-b flex items-center justify-between px-4 shrink-0 bg-white z-10">
+            <button onclick="toggleDrawer()" class="p-2 text-slate-500">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+            </button>
+            <div class="flex flex-col items-center">
+                <span id="titleText" class="text-xs font-bold text-slate-400 uppercase tracking-widest">请导入书籍</span>
+                <span id="sectionName" class="text-sm font-bold text-slate-800 truncate max-w-[150px]">未开始阅读</span>
+            </div>
+            <button onclick="restartSection()" class="p-2 text-slate-400">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            </button>
+        </header>
+
+        <!-- 聊天区域 -->
+        <div id="chatContent" class="chat-content" onclick="nextStep()">
+            <!-- 内容动态生成 -->
+        </div>
+
+        <!-- 底部提示 -->
+        <footer id="tapHint" class="h-10 flex items-center justify-center bg-slate-50 text-[10px] text-slate-400 animate-pulse border-t">
+            点击屏幕继续阅读
+        </footer>
+
+        <!-- 导入遮罩 -->
+        <div id="importOverlay">
+            <div class="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mb-4">
+                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+            </div>
+            <h2 class="text-lg font-bold text-slate-800 mb-2">欢迎查阅预览版</h2>
+            <p class="text-sm text-slate-500 mb-6 px-4">请导入由专业版导出的工程文件(JSON)以开始阅读体验</p>
+            <label class="cursor-pointer bg-indigo-600 text-white px-8 py-3 rounded-full font-bold shadow-lg shadow-indigo-200 active:scale-95 transition">
+                导入书籍文件
+                <input type="file" class="hidden" accept=".json" onchange="handleImport(event)">
+            </label>
+        </div>
+
+        <!-- 侧滑菜单 -->
+        <div id="drawerOverlay" class="drawer-overlay" onclick="toggleDrawer()"></div>
+        <div id="drawer">
+            <div class="p-6 border-b">
+                <h3 class="font-black text-slate-800 text-lg">目录</h3>
+            </div>
+            <div id="chapterList" class="overflow-y-auto h-full pb-20 p-4 space-y-4">
+                <!-- 章节列表 -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let novelData = null;
+        let currentChapterIdx = 0;
+        let currentSectionIdx = 0;
+        let messageIndex = 0;
+
+        // 导入处理
+        function handleImport(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const json = JSON.parse(event.target.result);
+                    // 适配不同的导出格式
+                    novelData = json.data || json;
+                    
+                    if (!novelData.chapters || novelData.chapters.length === 0) {
+                        alert("无效的书籍格式");
+                        return;
+                    }
+
+                    document.getElementById('importOverlay').style.display = 'none';
+                    renderChapterList();
+                    loadSection(0, 0);
+                } catch (err) {
+                    alert("文件读取失败，请确保是有效的JSON工程文件");
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // 加载章节
+        function loadSection(chapIdx, secIdx) {
+            currentChapterIdx = chapIdx;
+            currentSectionIdx = secIdx;
+            messageIndex = 0;
+            
+            const chapter = novelData.chapters[chapIdx];
+            const section = chapter.sections[secIdx];
+            
+            document.getElementById('titleText').innerText = chapter.name;
+            document.getElementById('sectionName').innerText = section.name;
+            document.getElementById('chatContent').innerHTML = '';
+            document.getElementById('tapHint').style.display = 'flex';
+            
+            toggleDrawer(false);
+            // 自动播放第一句
+            nextStep();
+        }
+
+        // 下一步阅读
+        function nextStep() {
+            if (!novelData) return;
+            const chapter = novelData.chapters[currentChapterIdx];
+            const section = chapter.sections[currentSectionIdx];
+            const messages = section.messages;
+
+            if (messageIndex >= messages.length) {
+                document.getElementById('tapHint').innerText = "本章已读完";
+                return;
+            }
+
+            const msg = messages[messageIndex];
+            const char = chapter.characters.find(c => c.id === msg.charId) || chapter.characters[0];
+            
+            // 获取位置
+            const pos = section.charPositions && section.charPositions[char.id] 
+                        ? section.charPositions[char.id] 
+                        : (chapter.characters.indexOf(char) === 1 ? 'right' : 'left');
+
+            const isRight = !char.isNarrative && pos === 'right';
+            
+            let html = '';
+            if (char.isNarrative) {
+                html = `<div class="message-anim narration-style">${msg.text}</div>`;
+            } else {
+                html = `
+                    <div class="flex ${isRight ? 'flex-row-reverse' : 'flex-row'} items-start gap-2 mb-4 message-anim">
+                        <div class="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 shadow-sm" 
+                             style="background-color: ${char.color}">
+                            ${char.displayChar}
+                        </div>
+                        <div class="flex flex-col ${isRight ? 'items-end' : 'items-start'} max-w-[75%]">
+                            <span class="text-[10px] text-slate-400 mb-1 px-1">${char.name}</span>
+                            <div class="p-3 text-sm shadow-sm ${isRight ? 'bubble-right' : 'bubble-left'}" 
+                                 style="${isRight ? 'background-color:' + char.color : ''}">
+                                ${msg.text}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const container = document.getElementById('chatContent');
+            container.insertAdjacentHTML('beforeend', html);
+            container.scrollTop = container.scrollHeight;
+            messageIndex++;
+
+            if (messageIndex >= messages.length) {
+                document.getElementById('tapHint').innerText = "本章完 (点击切换下一章)";
+            }
+        }
+
+        // 渲染目录
+        function renderChapterList() {
+            const list = document.getElementById('chapterList');
+            list.innerHTML = novelData.chapters.map((chap, cIdx) => `
+                <div class="mb-4">
+                    <div class="text-[10px] font-black text-slate-400 uppercase mb-2 tracking-widest">${chap.name}</div>
+                    <div class="grid gap-2">
+                        ${chap.sections.map((sec, sIdx) => `
+                            <div onclick="loadSection(${cIdx}, ${sIdx})" 
+                                 class="p-3 bg-slate-50 rounded-xl text-sm font-medium text-slate-700 active:bg-indigo-50 active:text-indigo-600 transition border border-transparent">
+                                ${sec.name}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // UI交互
+        function toggleDrawer(show) {
+            const drawer = document.getElementById('drawer');
+            const overlay = document.getElementById('drawerOverlay');
+            if (show === undefined) show = !drawer.classList.contains('open');
+            
+            if (show) {
+                drawer.classList.add('open');
+                overlay.classList.add('open');
+            } else {
+                drawer.classList.remove('open');
+                overlay.classList.remove('open');
+            }
+        }
+
+        function restartSection() {
+            if (novelData) loadSection(currentChapterIdx, currentSectionIdx);
+        }
+    </script>
+</body>
+</html>
